@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Shoebox 3D – receipts sorted on your own laptop</title>
+<style>
+:root{
+  --ink:#e8eef5; --muted:#98a6b8; --panel:rgba(14,22,32,.84); --line:#2b3a4b;
+  --green:#4fc3a1; --green-soft:#16372f; --stamp:#f0a45a; --stamp-soft:#3a2915; --bad:#ff8a8a;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#0d1620;color:var(--ink);overflow:hidden}
+body{font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-variant-numeric:tabular-nums}
+#gl{position:fixed;left:0;top:0;width:100%;height:100%;display:block;cursor:grab;touch-action:none}
+#gl:active{cursor:grabbing}
+.top{position:fixed;left:0;right:0;top:0;display:flex;align-items:center;gap:14px;padding:12px 18px;pointer-events:none;z-index:5}
+.top>*{pointer-events:auto}
+h1,h2{font-family:Georgia,"Iowan Old Style","Palatino Linotype",serif;margin:0;letter-spacing:-.01em}
+h1{font-size:1.7rem}
+.badge{display:inline-flex;gap:8px;align-items:center;padding:4px 12px;border:1px solid var(--green);color:var(--green);border-radius:999px;font-size:.8rem;background:var(--green-soft)}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--green)}
+.spacer{flex:1}
+.ui{position:fixed;inset:0;display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:64px 16px 16px;pointer-events:none;z-index:4}
+.hide .ui{display:none}
+.panel{pointer-events:auto;background:var(--panel);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:12px;padding:16px;max-height:calc(100vh - 80px);overflow:auto}
+#left{width:350px}
+#right{width:430px}
+h2{font-size:1.1rem;margin-bottom:8px}
+label{display:block;font-size:.84rem;color:var(--muted);margin:10px 0 4px}
+textarea,select,input[type=text]{width:100%;font:inherit;color:var(--ink);background:#0d1620;border:1px solid var(--line);border-radius:6px;padding:7px 9px}
+textarea{min-height:170px;resize:vertical;font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.8rem;line-height:1.4}
+:focus-visible{outline:3px solid var(--stamp);outline-offset:2px}
+.row{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:10px}
+button{font:inherit;cursor:pointer;border-radius:6px;padding:8px 14px;border:1px solid var(--line);background:#16212d;color:var(--ink)}
+button:hover{border-color:var(--green)}
+button.primary{background:var(--green);border-color:var(--green);color:#07140f;font-weight:700}
+button:disabled{opacity:.5;cursor:wait}
+.hint{font-size:.8rem;color:var(--muted);margin:6px 0 0}
+code{background:#0d1620;padding:1px 5px;border-radius:4px}
+#status{min-height:1.3em;font-size:.86rem;margin-top:8px;color:var(--muted)}
+#status.err{color:var(--bad)}
+progress{width:100%;height:8px;margin-top:8px;display:none}
+.big{display:flex;gap:22px;flex-wrap:wrap;margin-bottom:10px}
+.big span{display:block;font-size:.76rem;color:var(--muted)}
+.big strong{font-family:Georgia,serif;font-size:1.5rem}
+.tablewrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:.86rem;min-width:400px}
+th{text-align:left;font-weight:600;color:var(--muted);border-bottom:2px solid var(--line);padding:5px 6px}
+td{padding:5px 6px;border-bottom:1px solid var(--line);vertical-align:middle}
+td.num,th.num{text-align:right}
+td select{padding:3px 5px;font-size:.82rem}
+.flag{display:inline-block;padding:0 7px;border-radius:4px;background:var(--stamp-soft);color:var(--stamp);border:1px solid var(--stamp);font-size:.74rem;white-space:nowrap}
+.empty{color:var(--muted);padding:18px 0;text-align:center}
+.x{border:none;background:none;color:var(--muted);padding:2px 6px}
+#tip{position:fixed;pointer-events:none;background:rgba(8,14,20,.92);border:1px solid var(--green);color:var(--ink);padding:4px 10px;border-radius:6px;font-size:.82rem;display:none;z-index:9;white-space:nowrap}
+#nogl{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);color:var(--muted);text-align:center;display:none;max-width:420px;padding:0 20px}
+@media (max-width:900px){
+  #gl{height:44vh}
+  .ui{top:44vh;bottom:0;padding:8px 10px 14px;flex-direction:column;overflow-y:auto;pointer-events:auto;background:rgba(13,22,32,.5)}
+  #left,#right{width:100%;max-height:none;flex:none}
+  h1{font-size:1.3rem}
+  .badge{display:none}
+}
+@media (prefers-reduced-motion:reduce){*{scroll-behavior:auto}}
+</style>
+</head>
+<body>
+<canvas id="gl" aria-label="3D view of your spending towers. Drag to rotate, scroll to zoom."></canvas>
+<div id="nogl">3D view unavailable. Your browser could not start WebGL, or three.js could not load. The sorter below still works.</div>
+<div id="tip"></div>
+
+<div class="top">
+  <h1>Shoebox 3D</h1>
+  <span class="badge"><span class="dot"></span>Receipts stay on this device</span>
+  <span class="spacer"></span>
+  <button id="reset" type="button">Reset view</button>
+  <button id="toggle" type="button">Hide panels</button>
+</div>
+
+<div class="ui">
+  <section class="panel" id="left" aria-labelledby="in">
+    <h2 id="in">1. Add receipts</h2>
+    <label for="raw">Paste receipt text. Separate receipts with a line containing ---</label>
+    <textarea id="raw" spellcheck="false" placeholder="Paste text from emails, PDFs or photos you've run through OCR..."></textarea>
+    <div class="row">
+      <button id="sample" type="button">Load samples</button>
+      <input id="file" type="file" accept=".txt,.csv,.eml" multiple hidden>
+      <button id="pick" type="button">Open text files</button>
+    </div>
+    <label for="engine">Model engine</label>
+    <select id="engine">
+      <option value="ollama">Ollama on this computer (open-weight, fastest)</option>
+      <option value="webllm">In-browser model via WebGPU</option>
+      <option value="rules">Quick rules only (no AI, instant)</option>
+    </select>
+    <div id="ollamaOpts">
+      <label for="model">Ollama model</label>
+      <input id="model" type="text" value="qwen2.5:3b">
+      <p class="hint">Run <code>ollama pull qwen2.5:3b</code> once. If the page can't connect, start Ollama with <code>OLLAMA_ORIGINS=*</code>.</p>
+    </div>
+    <div id="webOpts" hidden>
+      <p class="hint">The first run downloads a small open model (Qwen2.5 1.5B, about 1 GB) and caches it in your browser. Needs WebGPU (Chrome or Edge).</p>
+    </div>
+    <div class="row"><button id="go" class="primary" type="button">Sort receipts</button></div>
+    <progress id="prog" max="1" value="0"></progress>
+    <div id="status" role="status" aria-live="polite"></div>
+  </section>
+
+  <section class="panel" id="right" aria-labelledby="out">
+    <h2 id="out">2. Your ledger</h2>
+    <div class="big">
+      <div><span>Total spend</span><strong id="sum">0.00</strong></div>
+      <div><span>Likely deductible</span><strong id="ded">0.00</strong></div>
+      <div><span>Receipts</span><strong id="cnt">0</strong></div>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Date</th><th>Vendor</th><th>Category</th><th class="num">Total</th><th></th><th></th></tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+      <div class="empty" id="empty">No receipts yet. Load the samples and press Sort receipts.</div>
+    </div>
+    <div class="row">
+      <button id="csv" type="button">Download CSV</button>
+      <button id="clear" type="button">Clear ledger</button>
+    </div>
+    <p class="hint">Check anything marked "check this". Small models misread messy receipts. Categories are suggestions, not tax advice.</p>
+  </section>
+</div>
+
+<script>
+/* ============ DATA + PARSING ============ */
+const CATS=["Software","Travel","Meals","Office","Equipment","Marketing","Utilities","Other"];
+const COLORS=["#4fc3a1","#6aa7ff","#f0a45a","#b79cff","#ff7f9c","#e8d35a","#5fd0e8","#9aa7b5"];
+const $=id=>document.getElementById(id);
+let ledger=[]; let webEngine=null; let S=null; /* S = 3D scene controller */
+
+const SAMPLE=`ADOBE SYSTEMS
+Creative Cloud All Apps
+Invoice date: 03 Mar 2026
+Total charged: USD 59.99
+---
+Uber Trip
+12/03/2026
+Airport to client office
+Fare 842.50 INR   Total 842.50
+---
+Cafe Coffee Day
+Date: 14-03-2026
+2 x Cappuccino, 1 x Sandwich
+Total Rs 465.00
+---
+Amazon.in Order
+Logitech MX Keys keyboard
+Order placed 18 March 2026
+Order total: Rs 9,495.00
+---
+Facebook Ads
+Campaign: Spring promo
+Billing date 21/03/2026
+Amount due $120.00
+---
+Airtel Broadband
+Bill date 25/03/2026
+Internet bill total Rs 1,179.00`;
+
+const RULES={
+  Software:/adobe|github|notion|figma|slack|zoom|dropbox|openai|subscription|licen[cs]e|saas|domain|hosting/i,
+  Travel:/uber|ola\b|lyft|flight|airline|indigo|train|irctc|hotel|taxi|fuel|petrol|metro/i,
+  Meals:/cafe|coffee|restaurant|swiggy|zomato|lunch|dinner|sandwich|pizza|bar\b/i,
+  Office:/stationery|paper|printer|ink|staples|desk|courier|postage/i,
+  Equipment:/keyboard|monitor|laptop|mouse|camera|headphone|ssd|router|hardware/i,
+  Marketing:/ads\b|advert|campaign|mailchimp|promo|facebook|google ads|seo/i,
+  Utilities:/electric|internet|broadband|mobile|phone bill|airtel|jio|water|power bill/i
+};
+
+function toISO(s){
+  if(!s) return "";
+  s=String(s).trim();
+  let m=s.match(/(\d{4})-(\d{1,2})-(\d{1,2})/); if(m) return `${m[1]}-${m[2].padStart(2,"0")}-${m[3].padStart(2,"0")}`;
+  m=s.match(/(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})/); if(m) return `${m[3]}-${m[2].padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  const mon={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,oct:10,nov:11,dec:12};
+  m=s.match(/(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})/); if(m&&mon[m[2].toLowerCase()]) return `${m[3]}-${String(mon[m[2].toLowerCase()]).padStart(2,"0")}-${m[1].padStart(2,"0")}`;
+  return "";
+}
+function num(v){ if(typeof v==="number") return v; const n=parseFloat(String(v).replace(/[^\d.]/g,"")); return isNaN(n)?0:n; }
+
+function rulesParse(text){
+  const lines=text.split("\n").map(l=>l.trim()).filter(Boolean);
+  const vendor=(lines[0]||"Unknown").replace(/\s+(Trip|Order|Invoice|Receipt)$/i,"");
+  const date=toISO((text.match(/\d{4}-\d{1,2}-\d{1,2}|\d{1,2}[\/.-]\d{1,2}[\/.-]\d{4}|\d{1,2}\s+[A-Za-z]{3}[a-z]*\s+\d{4}/)||[])[0]);
+  let total=0;
+  const tl=text.match(/(?:total|amount due|charged|fare)[^\d\n]{0,30}([\d,]+(?:\.\d{1,2})?)/i);
+  if(tl) total=num(tl[1]); else { const all=[...text.matchAll(/(\d[\d,]*\.\d{2})/g)].map(m=>num(m[1])); total=all.length?Math.max(...all):0; }
+  const cur=/₹|rs\.?\s|inr/i.test(text)?"INR":/€|eur/i.test(text)?"EUR":"USD";
+  let category="Other"; for(const c in RULES){ if(RULES[c].test(text)){category=c;break;} }
+  return {vendor,date,total,currency:cur,category,deductible:category!=="Meals"&&category!=="Other",confident:!!(date&&total)};
+}
+
+const SYS=`You extract data from one receipt or invoice. Reply with JSON only, using exactly these keys:
+{"vendor":string,"date":"YYYY-MM-DD" or "","total":number,"currency":"USD|INR|EUR|GBP|...","category":one of ${JSON.stringify(CATS)},"deductible":boolean}
+total is the final amount paid as a plain number. If a field is not in the text, use "" or 0. No explanation.`;
+
+function extractJSON(s){
+  const a=s.indexOf("{"), b=s.lastIndexOf("}");
+  if(a<0||b<a) throw new Error("No JSON in reply");
+  return JSON.parse(s.slice(a,b+1));
+}
+function normalize(o,fb){
+  const cat=CATS.find(c=>c.toLowerCase()===String(o.category||"").toLowerCase())||"Other";
+  const r={vendor:String(o.vendor||fb.vendor||"Unknown").slice(0,60),date:toISO(o.date)||fb.date,total:num(o.total)||fb.total,
+    currency:String(o.currency||fb.currency||"USD").slice(0,3).toUpperCase(),category:cat,deductible:!!o.deductible};
+  r.confident=!!(r.date&&r.total>0&&r.vendor!=="Unknown");
+  return r;
+}
+
+async function askOllama(text){
+  const res=await fetch("http://localhost:11434/api/chat",{method:"POST",headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({model:$("model").value.trim(),stream:false,format:"json",options:{temperature:0},
+      messages:[{role:"system",content:SYS},{role:"user",content:text}]})});
+  if(!res.ok) throw new Error("Ollama replied "+res.status+". Is the model pulled?");
+  const j=await res.json(); return extractJSON(j.message.content);
+}
+async function loadWeb(){
+  if(webEngine) return webEngine;
+  if(!("gpu" in navigator)) throw new Error("This browser has no WebGPU. Try Chrome or Edge, or use Ollama.");
+  setStatus("Loading in-browser model…"); $("prog").style.display="block";
+  const {CreateMLCEngine}=await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm/+esm");
+  webEngine=await CreateMLCEngine("Qwen2.5-1.5B-Instruct-q4f16_1-MLC",{initProgressCallback:p=>{$("prog").value=p.progress||0;setStatus(p.text||"Loading model…");}});
+  $("prog").style.display="none"; return webEngine;
+}
+async function askWeb(text){
+  const e=await loadWeb();
+  const r=await e.chat.completions.create({temperature:0,messages:[{role:"system",content:SYS},{role:"user",content:text}]});
+  return extractJSON(r.choices[0].message.content);
+}
+
+/* ============ UI ============ */
+function setStatus(t,err){const s=$("status");s.textContent=t;s.className=err?"err":"";}
+function save(){try{localStorage.setItem("shoebox3d",JSON.stringify(ledger));}catch(e){}}
+function money(n){return n.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2});}
+
+function render(){
+  const body=$("rows"); body.innerHTML="";
+  ledger.forEach((r,i)=>{
+    const tr=document.createElement("tr");
+    const dTd=document.createElement("td"); dTd.textContent=r.date||"?";
+    const vTd=document.createElement("td"); vTd.textContent=r.vendor;
+    const cTd=document.createElement("td"); const sel=document.createElement("select"); sel.setAttribute("aria-label","Category for "+r.vendor);
+    CATS.forEach(c=>{const o=document.createElement("option");o.textContent=c;if(c===r.category)o.selected=true;sel.appendChild(o);});
+    sel.onchange=()=>{r.category=sel.value;save();render();}; cTd.appendChild(sel);
+    const nTd=document.createElement("td"); nTd.className="num"; nTd.textContent=r.currency+" "+money(r.total);
+    const fTd=document.createElement("td"); if(!r.confident){const f=document.createElement("span");f.className="flag";f.textContent="check this";fTd.appendChild(f);}
+    const xTd=document.createElement("td"); const x=document.createElement("button"); x.className="x"; x.textContent="✕"; x.setAttribute("aria-label","Remove "+r.vendor);
+    x.onclick=()=>{ledger.splice(i,1);save();render();}; xTd.appendChild(x);
+    tr.append(dTd,vTd,cTd,nTd,fTd,xTd); body.appendChild(tr);
+  });
+  $("empty").style.display=ledger.length?"none":"block";
+  $("cnt").textContent=ledger.length;
+  const cur=ledger[0]?ledger[0].currency:"";
+  const sum=ledger.reduce((a,r)=>a+r.total,0), ded=ledger.filter(r=>r.deductible&&r.category!=="Other").reduce((a,r)=>a+r.total,0);
+  $("sum").textContent=(cur?cur+" ":"")+money(sum); $("ded").textContent=(cur?cur+" ":"")+money(ded);
+  const by={}; ledger.forEach(r=>by[r.category]=(by[r.category]||0)+r.total);
+  if(S) S.sync(by,cur);
+}
+
+async function run(){
+  const chunks=$("raw").value.split(/^\s*---+\s*$/m).map(s=>s.trim()).filter(Boolean);
+  if(!chunks.length){setStatus("Paste at least one receipt first.",true);return;}
+  const eng=$("engine").value; $("go").disabled=true; let ok=0;
+  try{
+    for(let i=0;i<chunks.length;i++){
+      setStatus(`Reading receipt ${i+1} of ${chunks.length}…`);
+      const fb=rulesParse(chunks[i]); let rec;
+      if(eng==="rules") rec=fb;
+      else { try{ rec=normalize(eng==="ollama"?await askOllama(chunks[i]):await askWeb(chunks[i]),fb);}
+             catch(err){ if(i===0&&/fetch|Failed|WebGPU|Ollama/i.test(err.message)){throw err;} rec={...fb,confident:false}; } }
+      ledger.push(rec); ok++; save();
+      if(S) S.fly(rec);
+      render();
+    }
+    setStatus(`Done. ${ok} receipt${ok===1?"":"s"} added.`);
+  }catch(err){
+    setStatus(eng==="ollama"?"Couldn't reach Ollama at localhost:11434. Start it (with OLLAMA_ORIGINS=*) or switch engine. "+err.message:err.message,true);
+  }finally{$("go").disabled=false;$("prog").style.display="none";}
+}
+
+function csv(){
+  const q=v=>'"'+String(v).replace(/"/g,'""')+'"';
+  const lines=[["Date","Vendor","Category","Currency","Total","Likely deductible"].join(",")]
+    .concat(ledger.map(r=>[r.date,q(r.vendor),r.category,r.currency,r.total.toFixed(2),r.deductible?"yes":"no"].join(",")));
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([lines.join("\n")],{type:"text/csv"}));
+  a.download="shoebox-ledger.csv"; a.click(); URL.revokeObjectURL(a.href);
+}
+
+$("go").onclick=run;
+$("csv").onclick=()=>ledger.length?csv():setStatus("Nothing to export yet.",true);
+$("sample").onclick=()=>{$("raw").value=SAMPLE;setStatus("Samples loaded. Press Sort receipts.");};
+$("clear").onclick=()=>{ledger=[];save();render();setStatus("Ledger cleared.");};
+$("pick").onclick=()=>$("file").click();
+$("file").onchange=async e=>{const parts=[];for(const f of e.target.files)parts.push((await f.text()).trim());
+  $("raw").value=($("raw").value?$("raw").value+"\n---\n":"")+parts.join("\n---\n");};
+$("engine").onchange=()=>{const v=$("engine").value;$("ollamaOpts").hidden=v!=="ollama";$("webOpts").hidden=v!=="webllm";};
+$("toggle").onclick=()=>{const h=document.body.classList.toggle("hide");$("toggle").textContent=h?"Show panels":"Hide panels";};
+$("reset").onclick=()=>{if(S)S.resetView();};
+
+/* ============ 3D SCENE ============ */
+function init3D(){
+  const canvas=$("gl");
+  let renderer;
+  try{ renderer=new THREE.WebGLRenderer({canvas,antialias:true}); }catch(e){ return null; }
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
+  renderer.shadowMap.enabled=true;
+  const BG=0x0d1620;
+  const scene=new THREE.Scene(); scene.background=new THREE.Color(BG); scene.fog=new THREE.Fog(BG,18,38);
+  const camera=new THREE.PerspectiveCamera(45,1,.1,100);
+
+  scene.add(new THREE.HemisphereLight(0xbfd8ff,0x1a2430,.85));
+  const sun=new THREE.DirectionalLight(0xffffff,.9); sun.position.set(6,12,6); sun.castShadow=true;
+  sun.shadow.mapSize.set(1024,1024);
+  Object.assign(sun.shadow.camera,{left:-12,right:12,top:12,bottom:-12,near:1,far:40});
+  scene.add(sun);
+
+  /* floor + rings */
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(15,64),new THREE.MeshStandardMaterial({color:0x131f2c,roughness:.95}));
+  floor.rotation.x=-Math.PI/2; floor.receiveShadow=true; scene.add(floor);
+  [3.6,6,8.4].forEach((r,i)=>{
+    const ring=new THREE.Mesh(new THREE.RingGeometry(r,r+.03,96),new THREE.MeshBasicMaterial({color:0x4fc3a1,transparent:true,opacity:.18-i*.04}));
+    ring.rotation.x=-Math.PI/2; ring.position.y=.01; scene.add(ring);
+  });
+
+  /* helper: canvas texture */
+  function tex(w,h,draw){ const c=document.createElement("canvas"); c.width=w;c.height=h; draw(c.getContext("2d"),w,h); const t=new THREE.CanvasTexture(c); t.anisotropy=4; return t; }
+
+  /* shoebox (open top) */
+  const box=new THREE.Group();
+  const wallMat=new THREE.MeshStandardMaterial({color:0xdfe7f0,roughness:.8});
+  const W=2.8,D=1.8,H=1.1,T=.08;
+  const parts=[[W,T,D,0,T/2,0],[W,H,T,0,H/2,D/2-T/2],[W,H,T,0,H/2,-D/2+T/2],[T,H,D,W/2-T/2,H/2,0],[T,H,D,-W/2+T/2,H/2,0]];
+  parts.forEach(p=>{const m=new THREE.Mesh(new THREE.BoxGeometry(p[0],p[1],p[2]),wallMat);m.position.set(p[3],p[4],p[5]);m.castShadow=true;m.receiveShadow=true;box.add(m);});
+  const band=new THREE.Mesh(new THREE.PlaneGeometry(W,.32),new THREE.MeshStandardMaterial({color:0x1f7a63,roughness:.7}));
+  band.position.set(0,H*.55,D/2+.001); box.add(band);
+  /* papers peeking out */
+  for(let i=0;i<4;i++){
+    const p=new THREE.Mesh(new THREE.PlaneGeometry(.9,1.2),new THREE.MeshStandardMaterial({color:0xffffff,side:THREE.DoubleSide,roughness:.9}));
+    p.position.set(-.8+i*.55,H+.12,(i%2?.15:-.15)); p.rotation.set(-.2+i*.1,0,(i-1.5)*.18); p.castShadow=true; box.add(p);
+  }
+  scene.add(box);
+  /* lid on the floor */
+  const lidTex=tex(512,256,(g,w,h)=>{g.fillStyle="#e9eff6";g.fillRect(0,0,w,h);g.fillStyle="#1f7a63";g.fillRect(0,h*.62,w,h*.12);
+    g.fillStyle="#16202e";g.font="bold 84px Georgia,serif";g.textAlign="center";g.fillText("SHOEBOX",w/2,h*.5);});
+  const lid=new THREE.Mesh(new THREE.BoxGeometry(3,.1,2),[0,1,2,3,4,5].map(i=>i===2?new THREE.MeshStandardMaterial({map:lidTex}):new THREE.MeshStandardMaterial({color:0xdfe7f0})));
+  lid.position.set(3,.05,1.3); lid.rotation.y=.35; lid.castShadow=true; lid.receiveShadow=true; scene.add(lid);
+
+  /* category towers */
+  const R=6; const cols=[]; const tower=[];
+  function label(i){
+    const c=document.createElement("canvas"); c.width=320;c.height=120;
+    const t=new THREE.CanvasTexture(c); const m=new THREE.SpriteMaterial({map:t,transparent:true,depthTest:false});
+    const s=new THREE.Sprite(m); s.scale.set(3.2,1.2,1); s.renderOrder=10;
+    return {sprite:s,canvas:c,tex:t,text:""};
+  }
+  function paint(l,name,amount,color){
+    const key=name+"|"+amount; if(l.text===key) return; l.text=key;
+    const g=l.canvas.getContext("2d"); g.clearRect(0,0,320,120);
+    g.fillStyle="rgba(8,14,20,.78)"; g.fillRect(10,14,300,92);
+    g.fillStyle=color; g.fillRect(10,14,6,92);
+    g.fillStyle="#e8eef5"; g.font="bold 36px system-ui,sans-serif"; g.textAlign="left"; g.fillText(name,28,56);
+    g.fillStyle="#98a6b8"; g.font="30px system-ui,sans-serif"; g.fillText(amount,28,94);
+    l.tex.needsUpdate=true;
+  }
+  CATS.forEach((c,i)=>{
+    const a=i/CATS.length*Math.PI*2+Math.PI/CATS.length, x=Math.cos(a)*R, z=Math.sin(a)*R;
+    const g=new THREE.BoxGeometry(1.3,1,1.3); g.translate(0,.5,0);
+    const m=new THREE.Mesh(g,new THREE.MeshStandardMaterial({color:COLORS[i],roughness:.55,metalness:.05}));
+    m.position.set(x,0,z); m.scale.y=.05; m.castShadow=true; m.receiveShadow=true; m.userData.cat=i; scene.add(m);
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.1,.06,32),new THREE.MeshStandardMaterial({color:0x1b2a3a,roughness:.9}));
+    base.position.set(x,.03,z); base.receiveShadow=true; scene.add(base);
+    const l=label(i); scene.add(l.sprite);
+    cols.push(m); tower.push({mesh:m,label:l,h:.05,target:.05,value:0,x,z});
+  });
+
+  /* receipts in flight */
+  const flights=[]; let nextSlot=0; const clock=()=>performance.now()/1000;
+  function paperTex(rec){
+    return tex(220,300,(g,w,h)=>{
+      g.fillStyle="#fff";g.fillRect(0,0,w,h);
+      g.fillStyle="#16202e";g.font="bold 24px Georgia,serif";g.textAlign="left";
+      let v=rec.vendor; if(v.length>14) v=v.slice(0,13)+"…"; g.fillText(v,14,38);
+      g.fillStyle="#5b6778";g.font="16px system-ui,sans-serif";g.fillText(rec.date||"no date",14,62);
+      g.strokeStyle="#d5dde6";g.lineWidth=2;
+      for(let y=88;y<200;y+=22){g.beginPath();g.moveTo(14,y);g.lineTo(w-14-(y%3)*18,y);g.stroke();}
+      g.fillStyle="#1f7a63";g.font="bold 30px system-ui,sans-serif";g.fillText(rec.currency+" "+Math.round(rec.total).toLocaleString(),14,262);
+    });
+  }
+
+  /* camera orbit */
+  const home={theta:.7,phi:1.0,radius:19};
+  let theta=home.theta,phi=home.phi,radius=home.radius,tt=theta,tp=phi,tr=radius;
+  let dragging=false,lx=0,ly=0,idle=0;
+  const reduce=window.matchMedia&&matchMedia("(prefers-reduced-motion: reduce)").matches;
+  canvas.addEventListener("pointerdown",e=>{dragging=true;lx=e.clientX;ly=e.clientY;idle=0;canvas.setPointerCapture(e.pointerId);});
+  canvas.addEventListener("pointerup",e=>{dragging=false;});
+  const ray=new THREE.Raycaster(), mouse=new THREE.Vector2(); const tip=$("tip");
+  canvas.addEventListener("pointermove",e=>{
+    if(dragging){tt-=(e.clientX-lx)*.006;tp=Math.max(.35,Math.min(1.45,tp-(e.clientY-ly)*.005));lx=e.clientX;ly=e.clientY;tip.style.display="none";return;}
+    const r=canvas.getBoundingClientRect(); mouse.set(((e.clientX-r.left)/r.width)*2-1,-((e.clientY-r.top)/r.height)*2+1);
+    ray.setFromCamera(mouse,camera); const hit=ray.intersectObjects(cols)[0];
+    if(hit){const t=tower[hit.object.userData.cat]; tip.textContent=CATS[hit.object.userData.cat]+": "+t.cur+" "+money(t.value);
+      tip.style.left=(e.clientX+14)+"px";tip.style.top=(e.clientY+14)+"px";tip.style.display="block";}
+    else tip.style.display="none";
+  });
+  canvas.addEventListener("pointerleave",()=>{tip.style.display="none";});
+  canvas.addEventListener("wheel",e=>{e.preventDefault();tr=Math.max(9,Math.min(28,tr+e.deltaY*.01));idle=0;},{passive:false});
+
+  function resize(){
+    const w=canvas.clientWidth,h=canvas.clientHeight; if(!w||!h) return;
+    renderer.setSize(w,h,false); camera.aspect=w/h; camera.updateProjectionMatrix();
+  }
+  window.addEventListener("resize",resize); resize();
+
+  let last=clock();
+  function frame(){
+    requestAnimationFrame(frame);
+    const now=clock(), dt=Math.min(.05,now-last); last=now;
+    if(!dragging&&!reduce){idle+=dt; if(idle>2) tt+=dt*.07;}
+    theta+=(tt-theta)*Math.min(1,dt*8); phi+=(tp-phi)*Math.min(1,dt*8); radius+=(tr-radius)*Math.min(1,dt*6);
+    const cy=1.6;
+    camera.position.set(Math.sin(theta)*Math.sin(phi)*radius,cy+Math.cos(phi)*radius,Math.cos(theta)*Math.sin(phi)*radius);
+    camera.lookAt(0,cy,0);
+
+    tower.forEach(t=>{
+      t.h+=(t.target-t.h)*Math.min(1,dt*3);
+      t.mesh.scale.y=Math.max(.05,t.h);
+      t.label.sprite.position.set(t.x,t.h+1.1,t.z);
+    });
+
+    for(let i=flights.length-1;i>=0;i--){
+      const f=flights[i], k=(now-f.start)/f.dur;
+      if(k<0) continue;
+      f.mesh.visible=true;
+      const p=Math.min(k,1), e=p<.5?2*p*p:1-Math.pow(-2*p+2,2)/2;
+      f.mesh.position.lerpVectors(f.from,f.to,e); f.mesh.position.y+=Math.sin(Math.PI*e)*3.2;
+      f.mesh.rotation.set(-1.2*e,f.spin*e,f.spin*.5*e); f.mesh.scale.setScalar(1-.55*e);
+      if(p>=1){scene.remove(f.mesh);f.mesh.material.map.dispose();f.mesh.material.dispose();f.mesh.geometry.dispose();flights.splice(i,1);}
+    }
+    renderer.render(scene,camera);
+  }
+  frame();
+
+  return {
+    sync(by,cur){
+      const vals=CATS.map(c=>by[c]||0), max=Math.max(1,...vals);
+      tower.forEach((t,i)=>{
+        t.value=vals[i]; t.cur=cur||""; t.target=vals[i]>0?Math.max(.4,vals[i]/max*5.5):.05;
+        paint(t.label,CATS[i],vals[i]>0?(cur?cur+" ":"")+money(vals[i]):"empty",COLORS[i]);
+      });
+    },
+    fly(rec){
+      const i=Math.max(0,CATS.indexOf(rec.category)), t=tower[i];
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(1.1,1.5),new THREE.MeshBasicMaterial({map:paperTex(rec),side:THREE.DoubleSide}));
+      m.visible=false; scene.add(m);
+      nextSlot=Math.max(nextSlot,clock())+.3;
+      flights.push({mesh:m,start:nextSlot,dur:1.5,spin:(Math.random()-.5)*5,
+        from:new THREE.Vector3((Math.random()-.5)*1.2,1.8,(Math.random()-.5)*.6),
+        to:new THREE.Vector3(t.x,Math.max(.4,t.target)+.5,t.z)});
+    },
+    resetView(){tt=home.theta;tp=home.phi;tr=home.radius;idle=0;}
+  };
+}
+
+/* ============ START ============ */
+function loadScript(src){return new Promise((res,rej)=>{const s=document.createElement("script");s.src=src;s.onload=res;s.onerror=rej;document.head.appendChild(s);});}
+(async()=>{
+  try{ledger=JSON.parse(localStorage.getItem("shoebox3d")||"[]");}catch(e){ledger=[];}
+  try{ await loadScript("https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"); }
+  catch(e){ try{ await loadScript("three.min.js"); }catch(e2){} }  /* offline fallback: put three.min.js next to this file */
+  if(window.THREE){ try{ S=init3D(); }catch(err){ console.error(err); S=null; } }
+  if(!S){ $("nogl").style.display="block"; }
+  render();
+})();
+</script>
+</body>
+</html>
